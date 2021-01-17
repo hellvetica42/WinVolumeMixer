@@ -55,32 +55,36 @@ def updatePorts():
     return val
 
 def readSerialData(serialPort: serial.Serial, control: Queue, window: sg.Window):
-    while True:
-        if serialPort != None:
-            if serialPort.in_waiting > 0:
-                #Read and parse data from form
-                string = serialPort.readline().decode('Ascii')
-                vals = string.split(":")
+    try:
+        while True:
+            if serialPort != None:
+                if serialPort.in_waiting > 0:
+                    #Read and parse data from form
+                    string = serialPort.readline().decode('Ascii')
+                    vals = string.split(":")
 
-                #Sets master volume
-                v = floor(float(vals[0])*100) 
-                window["-MASTER-"+"SLIDER"].update(v) 
-                setMasterVol(float(vals[0]))
+                    #Sets master volume
+                    v = floor(float(vals[0])*100) 
+                    window["-MASTER-"+"SLIDER"].update(v) 
+                    setMasterVol(float(vals[0]))
 
-                #Loops through names
-                for n, i in zip(names, range(len(names))):
-                    v = floor(float(vals[i+1])*100) 
-                    #Sets slider values to volumes
-                    window[n+"SLIDER"].update(v) 
+                    #Loops through names
+                    for n, i in zip(names, range(len(names))):
+                        v = floor(float(vals[i+1])*100) 
+                        #Sets slider values to volumes
+                        window[n+"SLIDER"].update(v) 
 
-                    if values[n] != "": 
-                        #Sets volume of source
-                        setSourceVol(values[n], float(vals[i+1]))
+                        if values[n] != "": 
+                            #Sets volume of source
+                            setSourceVol(values[n], float(vals[i+1]))
 
-        #If kill command is sent break thread
-        if not control.empty():
-            if control.get() == _kill:
-                break
+            #If kill command is sent break thread
+            if not control.empty():
+                if control.get() == _kill:
+                    break
+    except Exception as e:
+        print(e)
+        serialPort = None
 
 thread = None
 serialPort = None
@@ -102,6 +106,7 @@ while True:
 
     if 'CLEAR' in event:
         window[event.replace('CLEAR', '')].update(value="")
+        window.Hide()
 
     if 'SLIDER' in event:
         box = event.replace('SLIDER', '')

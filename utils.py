@@ -1,6 +1,7 @@
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 from ctypes import cast, POINTER
 from comtypes import CLSCTX_ALL
+from masterVolume import *
 from math import floor
 
 def getSources():
@@ -15,12 +16,7 @@ def setSourceVol(source, vol):
             volume.SetMasterVolume(vol, None)
 
 def setMasterVol(vol):
-    try:
-        devices = AudioUtilities.GetSpeakers()
-        interface = devices.Activate(
-        IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-        level = floor((1.0 - vol) * -28.0)
-        volume = cast(interface, POINTER(IAudioEndpointVolume))
-        volume.SetMasterVolumeLevel(level, None)
-    except Exception as e:
-        print('err')
+    ev = IAudioEndpointVolume.get_default()
+    ev.SetMasterVolumeLevelScalar(vol)
+
+
