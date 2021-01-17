@@ -1,61 +1,33 @@
+from utils import getSources, setMasterVol, setSourceVol
 import PySimpleGUI as sg
-from Mixer import Mixer
+from utils import *
 import serial.tools.list_ports
 from PySimpleGUI.PySimpleGUI import Column, VerticalSeparator
 from threading import Thread
 from queue import Queue
 from math import floor
-m = Mixer()
-sources = m.getSources()
-sPORT =""
-chosen = {s:False for s in sources}
+
+sources = getSources()
+control =  Queue()
 _kill = object()
-data = Queue()
-controlQ = Queue()
 
 names = ['-VOL1-',
         '-VOL2-',
         '-VOL3-',
-        '-VOL4-',
-        '-VOL5']
-
-controlDict = {n:"" for n in names}
-
-def comboChosen(s, event, w: sg.Window, values):
-    if chosen[s]:
-        for n in names:
-            if values[n] == s and n is not event:
-                w[n].update(value="")
-
-    chosen[s] = True
-    controlDict[event] = s
-
-def readSerialPort(s: serial.Serial, q: Queue, control: Queue, w: sg.Window, dict):
-    m = Mixer()
-    while True:
-        if s != None:
-            if(s.in_waiting > 0):
-                string = s.readline().decode('Ascii')
-                vals = string.split(":")
-                q.put(vals[:-1])
-
-                for n, i in zip(names, range(len(names))):
-                    v = floor(float(vals[i])*100)
-                    w[n+"SLIDER"].update(v)
-                    if values[n] != "":
-                        m.setSourceVol(dict[n], float(vals[i]))
-
-        if not control.empty():
-            if control.get() == _kill:
-                break
-
-def updateGui(w: sg.Window, data):
-    pass
-
+        '-VOL4-']
 
 layout = [[],[]]
-layout[0] = [sg.Text("PORT:"), sg.Combo([], size=(7, 1), key="-PORT-"), sg.Button("Select")]
-for i in range(1,6):
+layout[0] = [sg.Text("PORT:"), sg.Combo([], size=(15, 1), key="-PORT-"), sg.Button("Select"), sg.Button("Refresh")]
+layout[1].append(sg.Column( [
+    [
+        sg.Text("MASTER")
+    ],
+    [sg.Slider(range=(0,100), orientation='v', key="-MASTER-"+"SLIDER", enable_events=True)],
+    [sg.Check("Enable", default=True)],
+]))
+layout[1].append(sg.VSeparator())
+
+for i in range(1,5):
     layout[1].append(sg.Column( [
         [
             sg.Text(names[i-1])
@@ -65,54 +37,95 @@ for i in range(1,6):
         [sg.Check("Enable", default=True)],
         [sg.Button("Clear", key=names[i-1]+"CLEAR")]
     ]))
-    if i != 5:
+    if i != 4:
         layout[1].append(sg.VSeparator())
 
-# Create the window
 window = sg.Window("WinMixer", layout)
-serialPort = None
+
+def updateSources(s):
+    for n in names:
+        window[n].update(values=s)
+
+def updatePorts():
+    ports = serial.tools.list_ports.comports()
+    val = []
+    for port, desc, hwid in sorted(ports):
+        val.append(port)
+    window["-PORT-"].update(values=val)
+    return val
+
+def readSerialData(serialPort: serial.Serial, control: Queue, window: sg.Window):
+    while True:
+        if serialPort != None:
+            if serialPort.in_waiting > 0:
+                #Read and parse data from form
+                string = serialPort.readline().decode('Ascii')
+                vals = string.split(":")
+
+                #Sets master volume
+                v = floor(float(vals[0])*100) 
+                window["-MASTER-"+"SLIDER"].update(v) 
+                setMasterVol(float(vals[0]))
+
+                #Loops through names
+                for n, i in zip(names, range(len(names))):
+                    v = floor(float(vals[i+1])*100) 
+                    #Sets slider values to volumes
+                    window[n+"SLIDER"].update(v) 
+
+                    if values[n] != "": 
+                        #Sets volume of source
+                        setSourceVol(values[n], float(vals[i+1]))
+
+        #If kill command is sent break thread
+        if not control.empty():
+            if control.get() == _kill:
+                break
+
 thread = None
-# Create an event loop
+serialPort = None
 while True:
     event, values = window.read()
-    # End program if user closes window or
+    #Update the selections for new sources
+    updateSources(getSources())
+
     if event == sg.WIN_CLOSED:
-        controlQ.put(_kill)
+        control.put(_kill)
         break
 
     if event in names:
-        comboChosen(values[event], event, window, values)
+        for n in names:
+            #We check if the chosen source has been chosen by any OTHER combo box
+            if n is not event:
+                if values[n] == values[event]:
+                    window[n].update(value = "")
 
     if 'CLEAR' in event:
-        chosen[event.replace('CLEAR', '')] = False
-        controlDict[event.replace('CLEAR', '')] = ""
         window[event.replace('CLEAR', '')].update(value="")
 
     if 'SLIDER' in event:
-        if values[event.replace('SLIDER', '')] != "":
-            vol = values[event]/100
-            s = values[event.replace('SLIDER', '')]
-            m.setSourceVol(s, vol)
+        box = event.replace('SLIDER', '')
+        vol = values[event]/100
 
+        if 'MASTER' in event:
+            setMasterVol(vol)
+            pass
+        #Check if source is chosen
+        elif values[box] != "":
+            setSourceVol(values[box], vol)
+    #If port has been chosen
     if 'Select' == event:
-        ports = serial.tools.list_ports.comports()
-        val = []
-        for port, desc, hwid in sorted(ports):
-            val.append(port)
-        window["-PORT-"].update(values=val)
-
+        #Check if port is chosen
         if values["-PORT-"] != "":
             if serialPort != None:
                 serialPort.close()
             serialPort = serial.Serial(port = values["-PORT-"], baudrate=115200, bytesize=8)
 
             if thread == None:
-                thread = Thread(target=readSerialPort, args=(serialPort, data, controlQ, window, controlDict))
+                thread = Thread(target=readSerialData, args=(serialPort, control, window))
                 thread.start()
 
-    # if not data.empty():
-    #     print(data.get())
-
-
+    if 'Refresh' == event:
+        updatePorts()
 
 window.close()

@@ -1,6 +1,6 @@
 const int volPins[5] = {2, 1, 0, 5, 4}; //first is master
 float values[5] = {0,0,0,0,0};
-float tolerance = 0.01;
+float tolerance = 0.03;
 
 void setup() {
   // put your setup code here, to run once:
@@ -30,11 +30,11 @@ void loop() {
   if(changed(potValues)){
     for(int i = 0; i < 5; i++){
       values[i] = potValues[i];
-      if(values[i] < 0.02){
+      if(values[i] < tolerance){
         
         values[i] = 0.00;
       }
-      if(values[i] > 0.98){
+      if(values[i] > 1.0-tolerance){
         values[i] = 1.00;
       }
       Serial.print(values[i]);
